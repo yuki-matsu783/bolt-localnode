@@ -243,10 +243,7 @@ export const Preview = memo(() => {
   };
 
   return (
-    <div
-      ref={containerRef}
-      className={`w-full h-full flex flex-col relative ${isPreviewOnly ? 'fixed inset-0 z-50 bg-white' : ''}`}
-    >
+    <div ref={containerRef} className="w-full h-full flex flex-col relative">
       {isPortDropdownOpen && (
         <div className="z-iframe-overlay w-full h-full absolute" onClick={() => setIsPortDropdownOpen(false)} />
       )}
@@ -359,7 +356,7 @@ export const Preview = memo(() => {
         </div>
       </div>
 
-      <div className="flex-1 border-t border-bolt-elements-borderColor flex justify-center items-center overflow-auto">
+      <div className="flex-1 border-t border-bolt-elements-borderColor flex justify-center items-stretch overflow-auto">
         <div
           style={{
             width: isDeviceModeOn ? `${widthPercent}%` : '100%',
