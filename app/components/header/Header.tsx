@@ -19,7 +19,7 @@ export function Header() {
         <div className="i-ph:sidebar-simple-duotone text-xl" />
         <div className="flex items-center gap-1">
           <a href="/" className="flex items-center">
-            たい焼き機工房
+            ReactUI生成アプリ
           </a>
           <span className="text-xs text-bolt-elements-textSecondary">powered by</span>
           <a href="/" className="flex items-center">
