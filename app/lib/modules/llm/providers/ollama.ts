@@ -39,7 +39,9 @@ export default class OllamaProvider extends BaseProvider {
     baseUrlKey: 'OLLAMA_API_BASE_URL',
   };
 
-  staticModels: ModelInfo[] = [];
+  staticModels: ModelInfo[] = [
+    { name: 'llama3', label: 'llama3', provider: 'OLLAMA', maxTokenAllowed: 8000 },
+  ];
 
   async getDynamicModels(
     apiKeys?: Record<string, string>,
