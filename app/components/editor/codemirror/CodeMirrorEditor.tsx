@@ -1,3 +1,4 @@
+// CodeMirrorをReactコンポーネントとして実装するメインファイル
 import { acceptCompletion, autocompletion, closeBrackets } from '@codemirror/autocomplete';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { bracketMatching, foldGutter, indentOnInput, indentUnit } from '@codemirror/language';
@@ -28,63 +29,75 @@ import { getLanguage } from './languages';
 
 const logger = createScopedLogger('CodeMirrorEditor');
 
+// エディタードキュメントインターフェース：編集対象ファイルの情報を定義
 export interface EditorDocument {
-  value: string;
-  isBinary: boolean;
-  filePath: string;
-  scroll?: ScrollPosition;
+  value: string;      // ファイルの内容
+  isBinary: boolean;  // バイナリファイルかどうかのフラグ
+  filePath: string;   // ファイルの絶対パス
+  scroll?: ScrollPosition;  // スクロール位置情報（オプショナル）
 }
 
+// エディター設定インターフェース：表示に関する設定を定義
 export interface EditorSettings {
-  fontSize?: string;
-  gutterFontSize?: string;
-  tabSize?: number;
+  fontSize?: string;        // エディターのフォントサイズ
+  gutterFontSize?: string; // 行番号等のガター部分のフォントサイズ
+  tabSize?: number;        // タブのスペース数
 }
 
+// テキストファイル用のドキュメントタイプ
 type TextEditorDocument = EditorDocument & {
-  value: string;
+  value: string;  // テキストコンテンツ
 };
 
+// スクロール位置を管理するインターフェース
 export interface ScrollPosition {
-  top: number;
-  left: number;
+  top: number;   // 上からのスクロール位置
+  left: number;  // 左からのスクロール位置
 }
 
+// エディターの更新情報インターフェース
 export interface EditorUpdate {
-  selection: EditorSelection;
-  content: string;
+  selection: EditorSelection;  // 現在の選択範囲
+  content: string;            // 更新後のコンテンツ
 }
 
-export type OnChangeCallback = (update: EditorUpdate) => void;
-export type OnScrollCallback = (position: ScrollPosition) => void;
-export type OnSaveCallback = () => void;
+// 各種コールバック関数の型定義
+export type OnChangeCallback = (update: EditorUpdate) => void;      // 内容変更時の処理
+export type OnScrollCallback = (position: ScrollPosition) => void;   // スクロール時の処理
+export type OnSaveCallback = () => void;                            // 保存時の処理
 
+// エディターコンポーネントのProps
 interface Props {
-  theme: Theme;
-  id?: unknown;
-  doc?: EditorDocument;
-  editable?: boolean;
-  debounceChange?: number;
-  debounceScroll?: number;
-  autoFocusOnDocumentChange?: boolean;
-  onChange?: OnChangeCallback;
-  onScroll?: OnScrollCallback;
-  onSave?: OnSaveCallback;
-  className?: string;
-  settings?: EditorSettings;
+  theme: Theme;                        // エディターのテーマ（ダーク/ライト）
+  id?: unknown;                        // エディターの一意識別子
+  doc?: EditorDocument;                // 編集対象のドキュメント
+  editable?: boolean;                  // 編集可能かどうか
+  debounceChange?: number;             // 変更イベントの遅延時間（ms）
+  debounceScroll?: number;             // スクロールイベントの遅延時間（ms）
+  autoFocusOnDocumentChange?: boolean; // ドキュメント変更時に自動フォーカスするか
+  onChange?: OnChangeCallback;         // 内容変更時のコールバック
+  onScroll?: OnScrollCallback;         // スクロール時のコールバック
+  onSave?: OnSaveCallback;            // 保存時のコールバック
+  className?: string;                  // 追加のCSSクラス
+  settings?: EditorSettings;           // エディター表示設定
 }
 
+// エディターの状態を保持するためのMap型
 type EditorStates = Map<string, EditorState>;
 
+// 読み取り専用モード時のツールチップ表示制御用のStateEffect
 const readOnlyTooltipStateEffect = StateEffect.define<boolean>();
 
+// 読み取り専用モード時のツールチップ表示を管理するStateField
 const editableTooltipField = StateField.define<readonly Tooltip[]>({
-  create: () => [],
+  create: () => [], // 初期状態は空
   update(_tooltips, transaction) {
+    // 読み取り専用でない場合は何も表示しない
     if (!transaction.state.readOnly) {
       return [];
     }
 
+    // ESCキー以外のキー入力で読み取り専用警告を表示
     for (const effect of transaction.effects) {
       if (effect.is(readOnlyTooltipStateEffect) && effect.value) {
         return getReadOnlyTooltip(transaction.state);
@@ -98,23 +111,26 @@ const editableTooltipField = StateField.define<readonly Tooltip[]>({
   },
 });
 
+// 編集可能状態を制御するStateEffect
 const editableStateEffect = StateEffect.define<boolean>();
 
+// 編集可能状態を管理するStateField
 const editableStateField = StateField.define<boolean>({
   create() {
-    return true;
+    return true;  // デフォルトは編集可能
   },
   update(value, transaction) {
+    // editableStateEffectが発生した場合はその値を使用
     for (const effect of transaction.effects) {
       if (effect.is(editableStateEffect)) {
         return effect.value;
       }
     }
-
     return value;
   },
 });
 
+// CodeMirrorエディターの実装（メモ化コンポーネント）
 export const CodeMirrorEditor = memo(
   ({
     id,
@@ -132,8 +148,10 @@ export const CodeMirrorEditor = memo(
   }: Props) => {
     renderLogger.trace('CodeMirrorEditor');
 
+    // 言語サポート用のCompartment（言語に応じた構文ハイライト等の機能を提供）
     const [languageCompartment] = useState(new Compartment());
 
+    // 各種参照を保持するためのRef
     const containerRef = useRef<HTMLDivElement | null>(null);
     const viewRef = useRef<EditorView>();
     const themeRef = useRef<Theme>();
@@ -144,8 +162,8 @@ export const CodeMirrorEditor = memo(
     const onSaveRef = useRef(onSave);
 
     /**
-     * This effect is used to avoid side effects directly in the render function
-     * and instead the refs are updated after each render.
+     * このエフェクトは、レンダー関数内での副作用を避けるために使用され、
+     * 各レンダー後にRefが更新される。
      */
     useEffect(() => {
       onScrollRef.current = onScroll;
@@ -266,6 +284,7 @@ export default CodeMirrorEditor;
 
 CodeMirrorEditor.displayName = 'CodeMirrorEditor';
 
+// 新しいエディター状態を作成する関数
 function newEditorState(
   content: string,
   theme: Theme,
@@ -360,6 +379,7 @@ function newEditorState(
   });
 }
 
+// ドキュメントがない状態を設定する関数
 function setNoDocument(view: EditorView) {
   view.dispatch({
     selection: { anchor: 0 },
@@ -373,6 +393,7 @@ function setNoDocument(view: EditorView) {
   view.scrollDOM.scrollTo(0, 0);
 }
 
+// エディタードキュメントを設定する関数
 function setEditorDocument(
   view: EditorView,
   theme: Theme,
@@ -415,7 +436,7 @@ function setEditorDocument(
 
       if (autoFocus && editable) {
         if (needsScrolling) {
-          // we have to wait until the scroll position was changed before we can set the focus
+          // スクロール位置が変更されるまでフォーカスを待つ
           view.scrollDOM.addEventListener(
             'scroll',
             () => {
@@ -424,7 +445,7 @@ function setEditorDocument(
             { once: true },
           );
         } else {
-          // if the scroll position is still the same we can focus immediately
+          // スクロール位置が同じ場合は即座にフォーカス
           view.focus();
         }
       }
@@ -434,6 +455,7 @@ function setEditorDocument(
   });
 }
 
+// 読み取り専用ツールチップを取得する関数
 function getReadOnlyTooltip(state: EditorState) {
   if (!state.readOnly) {
     return [];

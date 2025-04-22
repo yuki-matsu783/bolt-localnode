@@ -57,6 +57,7 @@ const inlineThemeCode = stripIndents`
 export const Head = createHead(() => (
   <>
     <meta charSet="utf-8" />
+    <title>たい焼き機工房</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <Meta />
     <Links />
