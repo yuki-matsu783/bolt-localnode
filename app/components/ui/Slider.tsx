@@ -6,7 +6,6 @@ import { genericMemo } from '~/utils/react';
 
 export type SliderOptions<T> = {
   left: { value: T; text: string };
-  middle?: { value: T; text: string };
   right: { value: T; text: string };
 };
 

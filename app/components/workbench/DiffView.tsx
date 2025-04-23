@@ -600,6 +600,140 @@ const InlineDiffComparison = memo(({ beforeCode, afterCode, filename, language }
   );
 });
 
+const SideBySideDiffComparison = memo(({ beforeCode, afterCode, filename, language }: CodeComparisonProps) => {
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [highlighter, setHighlighter] = useState<any>(null);
+  const theme = useStore(themeStore);
+
+  const toggleFullscreen = useCallback(() => {
+    setIsFullscreen((prev) => !prev);
+  }, []);
+
+  const { beforeLines, afterLines, lineChanges, hasChanges, isBinary, error } = useProcessChanges(beforeCode, afterCode);
+
+  useEffect(() => {
+    getHighlighter({
+      themes: ['github-dark', 'github-light'],
+      langs: ['typescript', 'javascript', 'json', 'html', 'css', 'jsx', 'tsx'],
+    }).then(setHighlighter);
+  }, []);
+
+  if (isBinary || error) {
+    return renderContentWarning(isBinary ? 'binary' : 'error');
+  }
+
+  // 両方のファイルの最大行数を計算
+  const maxLines = Math.max(beforeLines.length, afterLines.length);
+  
+  // パディングを追加する関数
+  const padLines = (lines: string[], targetLength: number): string[] => {
+    if (lines.length >= targetLength) return lines;
+    return [...lines, ...Array(targetLength - lines.length).fill('')];
+  };
+  
+  // 同じ長さになるように両方の行リストにパディングを追加
+  const paddedBeforeLines = padLines(beforeLines, maxLines);
+  const paddedAfterLines = padLines(afterLines, maxLines);
+
+  return (
+    <FullscreenOverlay isFullscreen={isFullscreen}>
+      <div className="w-full h-full flex flex-col">
+        <FileInfo
+          filename={filename}
+          hasChanges={hasChanges}
+          onToggleFullscreen={toggleFullscreen}
+          isFullscreen={isFullscreen}
+          beforeCode={beforeCode}
+          afterCode={afterCode}
+        />
+        <div className={`${diffPanelStyles} flex flex-col`}>
+          {hasChanges ? (
+            <div className="flex w-full h-full">
+              {/* 左側パネル（変更前） */}
+              <div className="flex-1 border-r border-bolt-elements-borderColor overflow-auto diff-panel">
+                <div className="p-2 text-xs font-bold text-bolt-elements-textTertiary border-b border-bolt-elements-borderColor bg-bolt-elements-background-depth-1">
+                  変更前 (元のバージョン)
+                </div>
+                <div className="diff-panel-content overflow-auto">
+                  {paddedBeforeLines.map((line, index) => (
+                    <div key={`before-${index}`} className="flex group min-w-fit">
+                      <div className={lineNumberStyles}>{index + 1}</div>
+                      <div 
+                        className={`${lineContentStyles} ${lineChanges.before.has(index) ? diffLineStyles.removed : ''}`}
+                      >
+                        <span className="mr-2 text-bolt-elements-textTertiary">
+                          {lineChanges.before.has(index) ? (
+                            <span className="text-red-700 dark:text-red-500">-</span>
+                          ) : (
+                            ' '
+                          )}
+                        </span>
+                        <span
+                          dangerouslySetInnerHTML={{
+                            __html: highlighter
+                              ? highlighter
+                                  .codeToHtml(line, {
+                                    lang: language,
+                                    theme: theme === 'dark' ? 'github-dark' : 'github-light',
+                                  })
+                                  .replace(/<\/?pre[^>]*>/g, '')
+                                  .replace(/<\/?code[^>]*>/g, '')
+                              : line,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* 右側パネル（変更後） */}
+              <div className="flex-1 overflow-auto diff-panel">
+                <div className="p-2 text-xs font-bold text-bolt-elements-textTertiary border-b border-bolt-elements-borderColor bg-bolt-elements-background-depth-1">
+                  変更後 (現在のバージョン)
+                </div>
+                <div className="diff-panel-content overflow-auto">
+                  {paddedAfterLines.map((line, index) => (
+                    <div key={`after-${index}`} className="flex group min-w-fit">
+                      <div className={lineNumberStyles}>{index + 1}</div>
+                      <div 
+                        className={`${lineContentStyles} ${lineChanges.after.has(index) ? diffLineStyles.added : ''}`}
+                      >
+                        <span className="mr-2 text-bolt-elements-textTertiary">
+                          {lineChanges.after.has(index) ? (
+                            <span className="text-green-700 dark:text-green-500">+</span>
+                          ) : (
+                            ' '
+                          )}
+                        </span>
+                        <span
+                          dangerouslySetInnerHTML={{
+                            __html: highlighter
+                              ? highlighter
+                                  .codeToHtml(line, {
+                                    lang: language,
+                                    theme: theme === 'dark' ? 'github-dark' : 'github-light',
+                                  })
+                                  .replace(/<\/?pre[^>]*>/g, '')
+                                  .replace(/<\/?code[^>]*>/g, '')
+                              : line,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <NoChangesView beforeCode={beforeCode} language={language} highlighter={highlighter} theme={theme} />
+          )}
+        </div>
+      </div>
+    </FullscreenOverlay>
+  );
+});
+
 interface DiffViewProps {
   fileHistory: Record<string, FileHistory>;
   setFileHistory: React.Dispatch<React.SetStateAction<Record<string, FileHistory>>>;
@@ -713,7 +847,7 @@ export const DiffView = memo(({ fileHistory, setFileHistory }: DiffViewProps) =>
   try {
     return (
       <div className="h-full overflow-hidden">
-        <InlineDiffComparison
+        <SideBySideDiffComparison
           beforeCode={effectiveOriginalContent}
           afterCode={currentContent}
           language={language}

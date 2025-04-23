@@ -36,13 +36,9 @@ const sliderOptions: SliderOptions<WorkbenchViewType> = {
     value: 'code' as const,
     text: 'Code',
   },
-  middle: {
+  right: {
     value: 'diff' as const,
     text: 'Diff',
-  },
-  right: {
-    value: 'code' as const,
-    text: 'Code',
   },
 } satisfies SliderOptions<WorkbenchViewType>;
 
