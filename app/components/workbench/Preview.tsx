@@ -21,6 +21,10 @@ const WINDOW_SIZES: WindowSize[] = [
   { name: 'Desktop', width: 1920, height: 1080, icon: 'i-ph:monitor' },
 ];
 
+// ローカルプレビューURLの直接参照とプロキシURL
+const LOCAL_PREVIEW_URL = 'http://localhost:5174';
+const PROXY_PREVIEW_URL = '/api/proxy';
+
 export const Preview = memo(() => {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -34,8 +38,9 @@ export const Preview = memo(() => {
   const previews = useStore(workbenchStore.previews);
   const activePreview = previews[activePreviewIndex];
 
-  const [url, setUrl] = useState('');
-  const [iframeUrl, setIframeUrl] = useState<string | undefined>();
+  // 初期値としてプロキシURLをセット
+  const [url, setUrl] = useState(LOCAL_PREVIEW_URL);
+  const [iframeUrl, setIframeUrl] = useState<string | undefined>(PROXY_PREVIEW_URL);
   const [isSelectionMode, setIsSelectionMode] = useState(false);
 
   // Toggle between responsive mode and device mode
@@ -59,34 +64,40 @@ export const Preview = memo(() => {
 
   useEffect(() => {
     if (!activePreview) {
-      setUrl('');
-      setIframeUrl(undefined);
-
+      // プレビューがない場合でもプロキシURLを維持
+      setUrl(LOCAL_PREVIEW_URL);
+      setIframeUrl(PROXY_PREVIEW_URL);
       return;
     }
 
-    const { baseUrl } = activePreview;
-    setUrl(baseUrl);
-    setIframeUrl(baseUrl);
+    // Use proxy URL instead of WebContainer URL
+    setUrl(LOCAL_PREVIEW_URL);
+    setIframeUrl(PROXY_PREVIEW_URL);
   }, [activePreview]);
+
+  // コンポーネントのマウント時に一度だけ実行されるエフェクト
+  useEffect(() => {
+    // 初回ロード時にも確実にプロキシURLをセット
+    setUrl(LOCAL_PREVIEW_URL);
+    setIframeUrl(PROXY_PREVIEW_URL);
+  }, []);
 
   const validateUrl = useCallback(
     (value: string) => {
-      if (!activePreview) {
-        return false;
-      }
-
-      const { baseUrl } = activePreview;
-
-      if (value === baseUrl) {
+      // localhost:5174のURLを確実に許可する
+      if (value.startsWith('http://localhost:5174')) {
+        const path = value.substring('http://localhost:5174'.length);
+        setIframeUrl(`${PROXY_PREVIEW_URL}?path=${encodeURIComponent(path)}`);
         return true;
-      } else if (value.startsWith(baseUrl)) {
-        return ['/', '?', '#'].includes(value.charAt(baseUrl.length));
       }
-
+      // 相対パスの場合
+      if (value.startsWith('/')) {
+        setIframeUrl(`${PROXY_PREVIEW_URL}?path=${encodeURIComponent(value)}`);
+        return true;
+      }
       return false;
     },
-    [activePreview],
+    [],
   );
 
   const findMinPortIndex = useCallback(
@@ -105,7 +116,13 @@ export const Preview = memo(() => {
 
   const reloadPreview = () => {
     if (iframeRef.current) {
-      iframeRef.current.src = iframeRef.current.src;
+      // キャッシュを回避するためにタイムスタンプパラメータを追加
+      const timestamp = Date.now();
+      if (iframeRef.current.src.includes('?')) {
+        iframeRef.current.src = `${iframeRef.current.src}&_t=${timestamp}`;
+      } else {
+        iframeRef.current.src = `${iframeRef.current.src}?_t=${timestamp}`;
+      }
     }
   };
 
@@ -221,24 +238,16 @@ export const Preview = memo(() => {
   );
 
   const openInNewWindow = (size: WindowSize) => {
-    if (activePreview?.baseUrl) {
-      const match = activePreview.baseUrl.match(/^https?:\/\/([^.]+)\.local-credentialless\.webcontainer-api\.io/);
+    // Use localhost URL for opening in new window
+    const previewUrl = LOCAL_PREVIEW_URL;
+    const newWindow = window.open(
+      previewUrl,
+      '_blank',
+      `noopener,noreferrer,width=${size.width},height=${size.height},menubar=no,toolbar=no,location=no,status=no`,
+    );
 
-      if (match) {
-        const previewId = match[1];
-        const previewUrl = `/webcontainer/preview/${previewId}`;
-        const newWindow = window.open(
-          previewUrl,
-          '_blank',
-          `noopener,noreferrer,width=${size.width},height=${size.height},menubar=no,toolbar=no,location=no,status=no`,
-        );
-
-        if (newWindow) {
-          newWindow.focus();
-        }
-      } else {
-        console.warn('[Preview] Invalid WebContainer URL:', activePreview.baseUrl);
-      }
+    if (newWindow) {
+      newWindow.focus();
     }
   };
 
@@ -370,27 +379,18 @@ export const Preview = memo(() => {
             display: 'flex',
           }}
         >
-          {activePreview ? (
-            <>
               <iframe
                 ref={iframeRef}
                 title="preview"
                 className="border-none w-full h-full bg-bolt-elements-background-depth-1"
                 src={iframeUrl}
-                sandbox="allow-scripts allow-forms allow-popups allow-modals allow-storage-access-by-user-activation allow-same-origin"
-                allow="cross-origin-isolated"
+                sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals allow-downloads"
               />
               <ScreenshotSelector
                 isSelectionMode={isSelectionMode}
                 setIsSelectionMode={setIsSelectionMode}
                 containerRef={iframeRef}
               />
-            </>
-          ) : (
-            <div className="flex w-full h-full justify-center items-center bg-bolt-elements-background-depth-1 text-bolt-elements-textPrimary">
-              No preview available
-            </div>
-          )}
 
           {isDeviceModeOn && (
             <>

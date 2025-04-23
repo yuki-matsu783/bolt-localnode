@@ -69,9 +69,12 @@ export default async function handleRequest(
   }
 
   responseHeaders.set('Content-Type', 'text/html');
-
-  responseHeaders.set('Cross-Origin-Embedder-Policy', 'require-corp');
-  responseHeaders.set('Cross-Origin-Opener-Policy', 'same-origin');
+  
+  // クロスオリジンポリシーの設定を緩和する
+  // 'require-corp'から'unsafe-none'に変更してクロスオリジン埋め込みを許可
+  responseHeaders.set('Cross-Origin-Embedder-Policy', 'unsafe-none');
+  responseHeaders.set('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
+  // COOPとCOEPが厳しいとiframeからの外部リソース読み込みが制限されるため緩和
 
   return new Response(body, {
     headers: responseHeaders,
